@@ -20,11 +20,14 @@ The code took inspiration from Yara Blue's https://github.com/yara-blue/reflecti
 
 ## TODOs
 
-- Track already-seen struct fields to avoid duplicate field names
-- Drop partially initialized fields on error
+- Support bool, char, String
+- Support Option<T>, Box<T>
+- Support Vec<T>, HashMap<K, V>
 - Enum support
     - For now, we could just assume the enum tag has an offset of 0. This will be correct for all
       enums with non-Rust repr.
     - Not sure yet how to get enum discriminants, even for testing purposes
+        - Maybe assume that discriminants match the order of the variants in the type definition?
+          That should be fine for testing purposes.
 - Add some feature to provide deserialization options like "rename" and "flatten"
     - Presumably this should be an extra argument supplied to Parser construction

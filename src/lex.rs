@@ -5,7 +5,7 @@ pub struct Lexer<'data> {
     offset: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct JsonError {
     pub offset: usize,
     pub line: usize,
@@ -13,7 +13,7 @@ pub struct JsonError {
     pub kind: JsonErrorKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum JsonErrorKind {
     InvalidToken,
     IntegerTooLarge,
@@ -32,6 +32,8 @@ pub enum JsonErrorKind {
     InvalidControlCharacterInString,
     InvalidUtf8,
     UnknownField,
+    MissingField,
+    DuplicateField,
 }
 
 impl std::error::Error for JsonError {}
