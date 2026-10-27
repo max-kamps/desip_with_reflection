@@ -20,10 +20,10 @@ The code took inspiration from Yara Blue's https://github.com/yara-blue/reflecti
 
 ## TODOs
 
-- Support bool, char, String
-- Support Option<T>, Box<T>
-- Support Vec<T>, HashMap<K, V>
-- Enum support
+- Support `bool`, `char`, `String`
+- Support `Option<T>`, `Box<T>`
+- Support `Vec<T>`, `HashMap<K, V>`
+- Support `enum`s
     - For now, we could just assume the enum tag has an offset of 0. This will be correct for all
       enums with non-Rust repr.
     - Not sure yet how to get enum discriminants, even for testing purposes
