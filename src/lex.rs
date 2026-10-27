@@ -5,19 +5,24 @@ pub struct Lexer<'data> {
     offset: usize,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct JsonError {
     pub offset: usize,
     pub line: usize,
     pub column: usize,
     pub kind: JsonErrorKind,
+    #[cfg(debug_assertions)]
+    pub backtrace: std::backtrace::Backtrace,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum JsonErrorKind {
     InvalidToken,
-    IntegerTooLarge,
+    InvalidNumber,
+    UnexpectedValue,
     ExpectedValue,
+    ExpectedNull,
+    ExpectedBoolean,
     ExpectedNumber,
     ExpectedString,
     ExpectedFieldName,
@@ -41,12 +46,25 @@ use std::{borrow::Cow, slice::SliceIndex};
 
 use JsonErrorKind::*;
 
+impl JsonError {
+    pub fn new(offset: usize, line: usize, column: usize, kind: JsonErrorKind) -> Self {
+        Self {
+            offset,
+            line,
+            column,
+            kind,
+            #[cfg(debug_assertions)]
+            backtrace: std::backtrace::Backtrace::capture(),
+        }
+    }
+}
+
 impl std::fmt::Display for JsonError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "JSON error at line {}, column {}: {:?}",
-            self.line, self.column, self.kind
+            "JSON error at line {}, column {}: {:?}\nBacktrace:\n{}",
+            self.line, self.column, self.kind, self.backtrace
         )
     }
 }
@@ -90,12 +108,7 @@ impl<'data> Lexer<'data> {
                 column += 1;
             }
         }
-        JsonError {
-            offset,
-            line,
-            column,
-            kind,
-        }
+        JsonError::new(offset, line, column, kind)
     }
 
     pub fn error(&self, kind: JsonErrorKind) -> JsonError {
@@ -209,12 +222,16 @@ impl<'data> Lexer<'data> {
         (self.next_token()? == expected).ok_or_else(|| self.error(error))
     }
 
+    pub fn expect_null(&mut self) -> Result<(), JsonError> {
+        self.expect_token_kind(JsonTokenKind::Null, ExpectedNull)
+    }
+
     pub fn expect_array(&mut self) -> Result<(), JsonError> {
         self.expect_token_kind(JsonTokenKind::StartArray, ExpectedArray)
     }
 
     pub fn expect_object(&mut self) -> Result<(), JsonError> {
-        self.expect_token_kind(JsonTokenKind::StartObject, ExpectedValue)
+        self.expect_token_kind(JsonTokenKind::StartObject, ExpectedObject)
     }
 
     pub fn expect_colon(&mut self) -> Result<(), JsonError> {
@@ -229,27 +246,39 @@ impl<'data> Lexer<'data> {
         self.expect_token_kind(JsonTokenKind::PendingNumber, ExpectedNumber)
     }
 
-    pub fn read_integer(&mut self) -> Result<i128, JsonError> {
+    pub fn read_number_raw(&mut self) -> Result<&'data [u8], JsonError> {
         let start = self.offset;
-        let negative = self.next_is(b'-');
-
-        let mut n: i128 = (self
-            .next_if(|b| b.is_ascii_digit())
-            .ok_or_else(|| self.error_at(start, InvalidToken))?
-            - b'0') as i128;
-
-        while let Some(b) = self.next_if(|b| b.is_ascii_digit()) {
-            n = n
-                .checked_mul(10)
-                .and_then(|n| n.checked_add((b - b'0') as i128))
-                .ok_or_else(|| self.error_at(start, IntegerTooLarge))?;
+        if self.next_is(b'-') {
+            // negative sign
         }
 
-        if matches!(self.peek(), Some(b'.' | b'e' | b'E')) {
-            Err(self.error_at(start, ExpectedNumber))?;
+        if self.next_is(b'0') {
+            // leading zero
+        } else if self.next_if(|b| b.is_ascii_digit()).is_some() {
+            while self.next_if(|b| b.is_ascii_digit()).is_some() {}
+        } else {
+            Err(self.error_at(start, InvalidToken))?;
         }
 
-        Ok(if negative { -n } else { n })
+        if self.next_is(b'.') {
+            if self.next_if(|b| b.is_ascii_digit()).is_none() {
+                Err(self.error_at(start, InvalidToken))?;
+            }
+            while self.next_if(|b| b.is_ascii_digit()).is_some() {}
+        }
+
+        if let Some(b'e' | b'E') = self.peek() {
+            self.seek(1);
+            if !self.next_n_is(b"+") && !self.next_n_is(b"-") {
+                // optional sign
+            }
+            if self.next_if(|b| b.is_ascii_digit()).is_none() {
+                Err(self.error_at(start, InvalidToken))?;
+            }
+            while self.next_if(|b| b.is_ascii_digit()).is_some() {}
+        }
+
+        Ok(self.get(start..self.offset).unwrap())
     }
 
     /// Advance the position until we find a *special character*:

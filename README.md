@@ -23,11 +23,9 @@ thank you!
 
 ## TODOs
 
+- More helpful error messages (using `ariadne`?)
 - Support more types
-    - `bool`
     - `char`
-    - all integer types
-    - all float types
     - `NonZero<T>`, `Atomic<T>`, `Saturating<T>`, `Wrapping<T>`
     - `String`, `Box<str>`
     - `Box<T>`, `Rc<T>`, `Arc<T>`

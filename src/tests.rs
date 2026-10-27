@@ -1,9 +1,12 @@
-use desip_with_reflection::JsonErrorKind::*;
+use desip_with_reflection::{JsonError, JsonErrorKind::*, parse_slice};
 
 macro_rules! assert_parses {
     ($input:expr, $ty:ident $constructor_args:tt) => {
-        let data: $ty = desip_with_reflection::parse_slice($input).unwrap();
-        assert_eq!(data, $ty $constructor_args);
+        let data: Result<$ty, JsonError> = parse_slice($input);
+        match data {
+            Ok(data) => assert_eq!(data, $ty $constructor_args),
+            Err(err) => panic!("Parsing failed: {err}"),
+        };
     };
 }
 
@@ -50,6 +53,63 @@ fn simple_fail_duplicate_field() {
         }"#,
         Inner,
         DuplicateField
+    );
+}
+
+#[derive(Debug, PartialEq)]
+struct AllPrimitives {
+    unit: (),
+    bool: bool,
+    u8: u8,
+    u16: u16,
+    u32: u32,
+    u64: u64,
+    u128: u128,
+    i8: i8,
+    i16: i16,
+    i32: i32,
+    i64: i64,
+    i128: i128,
+    // char: char,
+    f32: f32,
+    f64: f64,
+}
+
+#[test]
+fn all_primitives() {
+    assert_parses!(
+        br#"{
+            "unit": null,
+            "bool": true,
+            "u8": 255,
+            "u16": 65535,
+            "u32": 4294967295,
+            "u64": 18446744073709551615,
+            "u128": 340282366920938463463374607431768211455,
+            "i8": -128,
+            "i16": -32768,
+            "i32": -2147483648,
+            "i64": -9223372036854775808,
+            "i128": -170141183460469231731687303715884105728,
+            "f32": 3.4028235e38,
+            "f64": 1.7976931348623157e308
+        }"#,
+        AllPrimitives {
+            unit: (),
+            bool: true,
+            u8: 255,
+            u16: 65535,
+            u32: 4294967295,
+            u64: 18446744073709551615,
+            u128: 340282366920938463463374607431768211455,
+            i8: -128,
+            i16: -32768,
+            i32: -2147483648,
+            i64: -9223372036854775808,
+            i128: -170141183460469231731687303715884105728,
+            f32: 3.4028235e38,
+            f64: 1.7976931348623157e308,
+        }
     );
 }
 

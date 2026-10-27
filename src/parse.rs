@@ -1,19 +1,10 @@
-use std::{
-    alloc::{Allocator as _, Global, Layout},
-    any::TypeId,
-    mem::MaybeUninit,
-    ptr::{self, DynMetadata},
-};
-
+use crate::const_format::const_panic;
 use crate::lex::{JsonError, JsonErrorKind, JsonTokenKind, Lexer};
-
-mod type_ids {
-    use std::any::TypeId;
-
-    pub const U8: TypeId = TypeId::of::<u8>();
-    pub const U16: TypeId = TypeId::of::<u16>();
-    pub const U32: TypeId = TypeId::of::<u32>();
-}
+use std::alloc::{Allocator as _, Global, Layout};
+use std::any::TypeId;
+use std::mem::MaybeUninit;
+use std::mem::type_info::TypeKind;
+use std::ptr::{self, DynMetadata};
 
 #[derive(Debug, Clone, Copy)]
 struct Parser {
@@ -40,10 +31,53 @@ impl<T> Empty for T {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ParseType {
+    Never,
+    Unit,
+    Bool,
     U8,
     U16,
     U32,
+    U64,
+    U128,
+    USize,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    ISize,
+    // Char,
+    F32,
+    F64,
     Object(usize),
+}
+
+const impl TryFrom<TypeId> for ParseType {
+    type Error = ();
+
+    fn try_from(type_id: TypeId) -> Result<Self, Self::Error> {
+        match type_id {
+            i if i == TypeId::of::<!>() => Ok(ParseType::Never),
+            i if i == TypeId::of::<()>() => Ok(ParseType::Unit),
+            i if i == TypeId::of::<bool>() => Ok(ParseType::Bool),
+            i if i == TypeId::of::<u8>() => Ok(ParseType::U8),
+            i if i == TypeId::of::<u16>() => Ok(ParseType::U16),
+            i if i == TypeId::of::<u32>() => Ok(ParseType::U32),
+            i if i == TypeId::of::<u64>() => Ok(ParseType::U64),
+            i if i == TypeId::of::<u128>() => Ok(ParseType::U128),
+            i if i == TypeId::of::<usize>() => Ok(ParseType::USize),
+            i if i == TypeId::of::<i8>() => Ok(ParseType::I8),
+            i if i == TypeId::of::<i16>() => Ok(ParseType::I16),
+            i if i == TypeId::of::<i32>() => Ok(ParseType::I32),
+            i if i == TypeId::of::<i64>() => Ok(ParseType::I64),
+            i if i == TypeId::of::<i128>() => Ok(ParseType::I128),
+            i if i == TypeId::of::<isize>() => Ok(ParseType::ISize),
+            // i if i == TypeId::of::<char>() => Ok(ParseType::Char),
+            i if i == TypeId::of::<f32>() => Ok(ParseType::F32),
+            i if i == TypeId::of::<f64>() => Ok(ParseType::F64),
+            _ => Err(()),
+        }
+    }
 }
 
 // Comptime parser construction:
@@ -75,23 +109,33 @@ impl ParseObject {
         for field_idx in 0..type_id.fields(0) {
             let field_id = type_id.field(0, field_idx);
             let field_type_id = field_id.type_id();
-            let parse_type = match field_type_id {
-                i if i == type_ids::U8 => ParseType::U8,
-                i if i == type_ids::U16 => ParseType::U16,
-                i if i == type_ids::U32 => ParseType::U32,
-                _ => 'block: {
-                    // Check if the nested type has already been added to the objects vector
-                    #[allow(clippy::needless_range_loop)] // Enumerate is not const yet
-                    for obj_idx in 0..objects.len() {
-                        let obj = &objects[obj_idx];
-                        if obj.type_id == field_type_id {
-                            break 'block ParseType::Object(obj_idx);
+            let name = field_id.name();
+            let offset = field_id.offset();
+            let parse_type = match ParseType::try_from(field_type_id) {
+                Ok(t) => t,
+                Err(_) => match field_type_id.info().kind {
+                    TypeKind::Struct => 'block: {
+                        // Check if the nested type has already been added to the objects vector
+                        #[allow(clippy::needless_range_loop)] // Enumerate is not const yet
+                        for obj_idx in 0..objects.len() {
+                            let obj = &objects[obj_idx];
+                            if obj.type_id == field_type_id {
+                                break 'block ParseType::Object(obj_idx);
+                            }
                         }
+                        // If not, create a new ParseObject for the nested type
+                        let nested_object_index = ParseObject::make(field_type_id, objects);
+                        ParseType::Object(nested_object_index)
                     }
-                    // If not, create a new ParseObject for the nested type
-                    let nested_object_index = ParseObject::make(field_type_id, objects);
-                    ParseType::Object(nested_object_index)
-                }
+                    other => {
+                        const_panic!(
+                            "Field {} of type {} has unsupported type {}",
+                            name,
+                            "<TODO type name>",
+                            "<TODO field type name>"
+                        );
+                    }
+                },
             };
 
             let vtable = field_type_id
@@ -100,8 +144,8 @@ impl ParseObject {
                 .get_vtable();
 
             fields.push(ParseField {
-                name: field_id.name(),
-                offset: field_id.offset(),
+                name,
+                offset,
                 parse_type,
                 vtable,
             })
@@ -227,30 +271,68 @@ impl Parser {
                     lex.expect_colon()?;
 
                     match field.parse_type {
-                        ParseType::U8 | ParseType::U16 | ParseType::U32 => {
+                        ParseType::Never => {
+                            return Err(lex.error_at(lex.offset(), JsonErrorKind::UnexpectedValue));
+                        }
+                        ParseType::Unit => {
+                            lex.expect_null()?;
+                        }
+                        ParseType::Bool => {
+                            let ptr = field_ptr.cast::<bool>();
+                            match lex.next_token()? {
+                                JsonTokenKind::True => unsafe { ptr.write(true) },
+                                JsonTokenKind::False => unsafe { ptr.write(false) },
+                                _ => return Err(lex.error(JsonErrorKind::ExpectedBoolean)),
+                            }
+                        }
+                        ParseType::U8
+                        | ParseType::U16
+                        | ParseType::U32
+                        | ParseType::U64
+                        | ParseType::U128
+                        | ParseType::USize
+                        | ParseType::I8
+                        | ParseType::I16
+                        | ParseType::I32
+                        | ParseType::I64
+                        | ParseType::I128
+                        | ParseType::ISize
+                        | ParseType::F32
+                        | ParseType::F64 => {
                             lex.expect_number()?;
                             let value_offset = lex.offset();
-                            let n = lex.read_integer()?;
+                            let n_str = lex.read_number_raw()?;
+                            // Safety: read_number_raw only returns valid JSON numbers, which are
+                            // all ASCII and thus valid UTF-8.
+                            let n_str = unsafe { str::from_utf8_unchecked(n_str) };
 
-                            macro_rules! write_integer {
+                            macro_rules! write_number {
                                 ($ty:ty) => {
                                     unsafe {
-                                        field_ptr.cast::<$ty>().write(n.try_into().map_err(
-                                            |_| {
-                                                lex.error_at(
-                                                    value_offset,
-                                                    JsonErrorKind::IntegerTooLarge,
-                                                )
-                                            },
-                                        )?)
+                                        let ptr = field_ptr.cast::<$ty>();
+                                        let n: $ty = n_str.parse().map_err(|_| {
+                                            lex.error_at(value_offset, JsonErrorKind::InvalidNumber)
+                                        })?;
+                                        ptr.write(n);
                                     }
                                 };
                             }
 
                             match field.parse_type {
-                                ParseType::U8 => write_integer!(u8),
-                                ParseType::U16 => write_integer!(u16),
-                                ParseType::U32 => write_integer!(u32),
+                                ParseType::U8 => write_number!(u8),
+                                ParseType::U16 => write_number!(u16),
+                                ParseType::U32 => write_number!(u32),
+                                ParseType::U64 => write_number!(u64),
+                                ParseType::U128 => write_number!(u128),
+                                ParseType::USize => write_number!(usize),
+                                ParseType::I8 => write_number!(i8),
+                                ParseType::I16 => write_number!(i16),
+                                ParseType::I32 => write_number!(i32),
+                                ParseType::I64 => write_number!(i64),
+                                ParseType::I128 => write_number!(i128),
+                                ParseType::ISize => write_number!(isize),
+                                ParseType::F32 => write_number!(f32),
+                                ParseType::F64 => write_number!(f64),
                                 _ => unreachable!(),
                             }
                         }
