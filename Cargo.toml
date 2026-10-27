@@ -1,0 +1,8 @@
+[package]
+name = "desip_with_reflection"
+version = "0.1.0"
+edition = "2024"
+
+[[test]]
+name = "tests"
+path = "src/tests.rs"
