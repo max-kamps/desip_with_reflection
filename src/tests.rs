@@ -58,7 +58,7 @@ fn simple_fail_duplicate_field() {
 
 #[derive(Debug, PartialEq)]
 struct AllPrimitives {
-    unit: (),
+    // unit: (), // FIXME https://github.com/rust-lang/rust/issues/165064
     bool: bool,
     u8: u8,
     u16: u16,
@@ -79,7 +79,6 @@ struct AllPrimitives {
 fn all_primitives() {
     assert_parses!(
         br#"{
-            "unit": null,
             "bool": true,
             "u8": 255,
             "u16": 65535,
@@ -95,7 +94,6 @@ fn all_primitives() {
             "f64": 1.7976931348623157e308
         }"#,
         AllPrimitives {
-            unit: (),
             bool: true,
             u8: 255,
             u16: 65535,
@@ -156,5 +154,38 @@ fn nested_structs() {
                 z: 254,
             },
         }
+    );
+}
+
+#[derive(Debug, PartialEq)]
+struct ContainsString {
+    a: String,
+    b: String,
+}
+
+#[test]
+fn containing_string() {
+    assert_parses!(
+        br#"{
+            "a": "Hello",
+            "b": "World"
+        }"#,
+        ContainsString {
+            a: String::from("Hello"),
+            b: String::from("World"),
+        }
+    );
+}
+
+#[test]
+fn containing_string_fail_missing_field() {
+    // Under Miri, this should fail if the parser does not properly drop heap-allocated fields
+    // of partially constructed output
+    assert_errors!(
+        br#"{
+            "a": "Hello"
+        }"#,
+        ContainsString,
+        MissingField
     );
 }

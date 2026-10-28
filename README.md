@@ -10,6 +10,8 @@ thank you!
 
 ## General structure
 
+- `src/const_format.rs`: some const-context string formatting helpers for error messages
+    - `Buffer` is a `Vec<u8>` with all methods being const
 - `src/lex.rs`: JSON syntax handling
     - Quite similar to e.g. `serde`. Not very interesting.
     - defines the `Lexer` type
@@ -25,20 +27,19 @@ thank you!
 
 - More helpful error messages (using `ariadne`?)
 - Support more types
-    - `char`
-    - `NonZero<T>`, `Atomic<T>`, `Saturating<T>`, `Wrapping<T>`
-    - `String`, `Box<str>`
-    - `Box<T>`, `Rc<T>`, `Arc<T>`
-    - `Option<T>`
-    - tuples
-    - `Range<I>`, `RangeInclusive<I>`, `RangeTo<I>`, `RangeToInclusive<I>`, `RangeFrom<I>`,
-      `RangeFull<I>`
     - `[T; N]`
-    - `Box<[T]>`
-    - `Vec<u8>` from strings
+    - tuples
+    - `Option<T>`
+    - `Box<T>`, `Rc<T>`, `Arc<T>`
+    - `NonZero<T>`, `Atomic<T>`, `Saturating<T>`, `Wrapping<T>`
+    - `Box<str>`, `Box<[T]>`
     - `Vec<T>`
+    - `Range<I>`, `RangeInclusive<I>`, `RangeTo<I>`, `RangeToInclusive<I>`, `RangeFrom<I>`,
+      `RangeFull`
     - `HashMap<K, V>`, `BTreeMap<K, V>`
     - `PhantomData<T>`
+    - `Vec<u8>` from strings
+    - `char`
     - ...
 - Support `enum`s
     - For now, we could just assume the enum tag has an offset of 0. This will be correct for all

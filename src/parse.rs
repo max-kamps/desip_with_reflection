@@ -1,4 +1,4 @@
-use crate::const_format::const_panic;
+use crate::const_format::{Buffer, const_format, const_panic, full_type_name, id};
 use crate::lex::{JsonError, JsonErrorKind, JsonTokenKind, Lexer};
 use std::alloc::{Allocator as _, Global, Layout};
 use std::any::TypeId;
@@ -49,56 +49,31 @@ enum ParseType {
     // Char,
     F32,
     F64,
+    String,
     Object(usize),
-}
-
-const impl TryFrom<TypeId> for ParseType {
-    type Error = ();
-
-    fn try_from(type_id: TypeId) -> Result<Self, Self::Error> {
-        match type_id {
-            i if i == TypeId::of::<!>() => Ok(ParseType::Never),
-            i if i == TypeId::of::<()>() => Ok(ParseType::Unit),
-            i if i == TypeId::of::<bool>() => Ok(ParseType::Bool),
-            i if i == TypeId::of::<u8>() => Ok(ParseType::U8),
-            i if i == TypeId::of::<u16>() => Ok(ParseType::U16),
-            i if i == TypeId::of::<u32>() => Ok(ParseType::U32),
-            i if i == TypeId::of::<u64>() => Ok(ParseType::U64),
-            i if i == TypeId::of::<u128>() => Ok(ParseType::U128),
-            i if i == TypeId::of::<usize>() => Ok(ParseType::USize),
-            i if i == TypeId::of::<i8>() => Ok(ParseType::I8),
-            i if i == TypeId::of::<i16>() => Ok(ParseType::I16),
-            i if i == TypeId::of::<i32>() => Ok(ParseType::I32),
-            i if i == TypeId::of::<i64>() => Ok(ParseType::I64),
-            i if i == TypeId::of::<i128>() => Ok(ParseType::I128),
-            i if i == TypeId::of::<isize>() => Ok(ParseType::ISize),
-            // i if i == TypeId::of::<char>() => Ok(ParseType::Char),
-            i if i == TypeId::of::<f32>() => Ok(ParseType::F32),
-            i if i == TypeId::of::<f64>() => Ok(ParseType::F64),
-            _ => Err(()),
-        }
-    }
 }
 
 // Comptime parser construction:
 
 impl Parser {
     #[rustc_comptime]
-    pub fn new(type_id: TypeId) -> Parser {
+    pub fn new(type_id: TypeId) -> Result<Parser, &'static str>  {
         let mut objects = Vec::new();
-        let root_object = ParseObject::make(type_id, &mut objects);
+        let mut path = Buffer::new();
+        path.extend_from_str(type_id.name());
+        let root_object = ParseObject::make(type_id, &mut objects, &mut path)?;
         let objects = objects.const_make_global();
 
-        Parser {
+        Ok(Parser {
             root_object,
             objects,
-        }
+        })
     }
 }
 
 impl ParseObject {
     #[rustc_comptime]
-    fn make(type_id: TypeId, objects: &mut Vec<ParseObject>) -> usize {
+    fn make(type_id: TypeId, objects: &mut Vec<ParseObject>, path: &mut Buffer) -> Result<usize, &'static str> {
         objects.push(ParseObject {
             fields: &[],
             type_id,
@@ -111,37 +86,64 @@ impl ParseObject {
             let field_type_id = field_id.type_id();
             let name = field_id.name();
             let offset = field_id.offset();
-            let parse_type = match ParseType::try_from(field_type_id) {
-                Ok(t) => t,
-                Err(_) => match field_type_id.info().kind {
-                    TypeKind::Struct => 'block: {
-                        // Check if the nested type has already been added to the objects vector
-                        #[allow(clippy::needless_range_loop)] // Enumerate is not const yet
-                        for obj_idx in 0..objects.len() {
-                            let obj = &objects[obj_idx];
-                            if obj.type_id == field_type_id {
-                                break 'block ParseType::Object(obj_idx);
-                            }
+
+            let i: TypeId = field_type_id;
+            let parse_type = match field_type_id.info().kind {
+                TypeKind::Other if i == id![!] => ParseType::Never,
+                TypeKind::Tuple if i.fields(0) == 0 => ParseType::Unit,
+                TypeKind::Tuple if i == id![()] => ParseType::Unit,
+                TypeKind::Bool if i == id![bool] => ParseType::Bool,
+                TypeKind::Int if i == id![u8] => ParseType::U8,
+                TypeKind::Int if i == id![u16] => ParseType::U16,
+                TypeKind::Int if i == id![u32] => ParseType::U32,
+                TypeKind::Int if i == id![u64] => ParseType::U64,
+                TypeKind::Int if i == id![u128] => ParseType::U128,
+                TypeKind::Int if i == id![usize] => ParseType::USize,
+                TypeKind::Int if i == id![i8] => ParseType::I8,
+                TypeKind::Int if i == id![i16] => ParseType::I16,
+                TypeKind::Int if i == id![i32] => ParseType::I32,
+                TypeKind::Int if i == id![i64] => ParseType::I64,
+                TypeKind::Int if i == id![i128] => ParseType::I128,
+                TypeKind::Int if i == id![isize] => ParseType::ISize,
+                // TypeKind::Char if i == id![char] => ParseType::Char,
+                TypeKind::Float if i == id![f32] => ParseType::F32,
+                TypeKind::Float if i == id![f64] => ParseType::F64,
+                TypeKind::Struct if i == id![String] => ParseType::String,
+                TypeKind::Struct => 'block: {
+                    // Check if the nested type has already been added to the objects vector
+                    #[allow(clippy::needless_range_loop)] // Enumerate is not const yet
+                    for obj_idx in 0..objects.len() {
+                        let obj = &objects[obj_idx];
+                        if obj.type_id == field_type_id {
+                            break 'block ParseType::Object(obj_idx);
                         }
-                        // If not, create a new ParseObject for the nested type
-                        let nested_object_index = ParseObject::make(field_type_id, objects);
-                        ParseType::Object(nested_object_index)
                     }
-                    other => {
-                        const_panic!(
-                            "Field {} of type {} has unsupported type {}",
-                            name,
-                            "<TODO type name>",
-                            "<TODO field type name>"
-                        );
-                    }
-                },
+
+                    // If not, create a new ParseObject for the nested type
+                    let saved_path_len = path.len();
+                    path.push(b'.');
+                    path.extend_from_str(name);
+                    let nested_object_index = ParseObject::make(field_type_id, objects, path)?;
+                    path.truncate(saved_path_len);
+
+                    ParseType::Object(nested_object_index)
+                }
+                _other => {
+                    return Err(const_format!(
+                        "Field `{}` of type `{}` (full path `{}`) has unsupported type `{}`",
+                        name,
+                        full_type_name(type_id),
+                        path,
+                        full_type_name(field_type_id),
+                    ));
+                }
             };
 
             let vtable = field_type_id
                 .trait_info_of::<dyn Empty>()
                 .unwrap()
                 .get_vtable();
+
 
             fields.push(ParseField {
                 name,
@@ -153,7 +155,7 @@ impl ParseObject {
         let fields = fields.const_make_global();
 
         objects[object_index].fields = fields;
-        object_index
+        Ok(object_index)
     }
 }
 
@@ -336,6 +338,15 @@ impl Parser {
                                 _ => unreachable!(),
                             }
                         }
+
+                        ParseType::String => {
+                            lex.expect_string()?;
+                            let ptr = field_ptr.cast::<String>();
+                            let cow = lex.read_string_utf8()?;
+                            let owned = cow.into_owned();
+                            unsafe { ptr.write(owned) };
+                        }
+
                         ParseType::Object(i) => {
                             let nested_object = &self.objects[i];
                             self.parse_object_into(nested_object, lex, field_ptr, scratchpad)?;
@@ -366,8 +377,10 @@ pub fn parse_slice<T: 'static>(slice: &[u8]) -> Result<T, JsonError> {
     let mut lex: Lexer = Lexer::new(slice);
     let mut t = MaybeUninit::<T>::uninit();
     let parser = &const {
-        let type_id = TypeId::of::<T>();
-        Parser::new(type_id)
+        match Parser::new(id![T]) {
+            Ok(parser) => parser,
+            Err(e) => const_panic!("Failed to construct parser for type `{}`. Error: {}", full_type_name(id![T]), e),
+        }
     };
     println!("Parser: {:#?}", parser);
     parser.parse_into(&mut lex, t.as_mut_ptr().cast())?;
