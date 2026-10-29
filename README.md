@@ -44,18 +44,17 @@ thank you!
 
 - More helpful error messages (using `ariadne`?)
 - Support more types
-    - `()`, `PhantomData<T>`, arbitrary ZSTs (Currently blocked on
-      [this compiler error](https://github.com/rust-lang/rust/issues/161448))
     - tuples & tuple structs
-    - `Option<T>`
     - `Vec<T>`, `Box<[T]>`
     - `Box<T>`, `Rc<T>`, `Arc<T>`
-    - `Saturating<T>`, `Wrapping<T>`
     - `NonZero<T>`
     - `Atomic<T>`,
     - `Range<I>`, `RangeInclusive<I>`, `RangeTo<I>`, `RangeToInclusive<I>`, `RangeFrom<I>`,
       `RangeFull`
     - `HashMap<K, V>`, `BTreeMap<K, V>`
+    - `()`, `PhantomData<T>`, arbitrary ZSTs (Blocked on
+      [this compiler error](https://github.com/rust-lang/rust/issues/161448))
+    - `Option<T>` (Blocked on enum discriminants)
     - `Vec<u8>` from strings (Needs design decision: How can the user configure whether they want to
       allow this, or only array-of-numbers?)
     - `char` (Needs design decision: How can the user configure whether they want to allow codepoint
