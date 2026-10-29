@@ -70,6 +70,7 @@ impl Opcode {
     const SCALAR_F32: Self = Opcode(16);
     const SCALAR_F64: Self = Opcode(17);
     const SCALAR_STRING: Self = Opcode(18);
+    const SCALAR_BOX_STR: Self = Opcode(19);
 
     const fn new(category: u32, argument: u32) -> Self {
         assert!(category <= 0xF, "Category must be 4 bits");
@@ -90,7 +91,7 @@ pub enum Command<'prog> {
     U8, U16, U32, U64, U128, Usize,
     I8, I16, I32, I64, I128, Isize,
     F32, F64,
-    String,
+    String, BoxStr,
 
     FixedArray {
         len: u32,
@@ -131,6 +132,7 @@ impl Command<'_> {
             Command::F32 => Some(Opcode::SCALAR_F32),
             Command::F64 => Some(Opcode::SCALAR_F64),
             Command::String => Some(Opcode::SCALAR_STRING),
+            Command::BoxStr => Some(Opcode::SCALAR_BOX_STR),
             _ => None,
         }
     }
@@ -199,6 +201,7 @@ impl<Commands> Program<Commands> {
                 Opcode::SCALAR_F32 => Command::F32,
                 Opcode::SCALAR_F64 => Command::F64,
                 Opcode::SCALAR_STRING => Command::String,
+                Opcode::SCALAR_BOX_STR => Command::BoxStr,
                 _ => const_panic!("Invalid well-known command index: {}", argument),
             },
             Opcode::CAT_OBJECT => {
@@ -241,24 +244,25 @@ impl<Commands: AsSlice<u32>> Debug for Program<Commands> {
         ) -> fmt::Result {
             let command = program.get_command(opcode);
             match command {
-                Command::Never => write!(f, "Never"),
-                Command::Unit => write!(f, "Unit"),
-                Command::Bool => write!(f, "Bool"),
-                Command::U8 => write!(f, "U8"),
-                Command::U16 => write!(f, "U16"),
-                Command::U32 => write!(f, "U32"),
-                Command::U64 => write!(f, "U64"),
-                Command::U128 => write!(f, "U128"),
-                Command::Usize => write!(f, "Usize"),
-                Command::I8 => write!(f, "I8"),
-                Command::I16 => write!(f, "I16"),
-                Command::I32 => write!(f, "I32"),
-                Command::I64 => write!(f, "I64"),
-                Command::I128 => write!(f, "I128"),
-                Command::Isize => write!(f, "Isize"),
-                Command::F32 => write!(f, "F32"),
-                Command::F64 => write!(f, "F64"),
+                Command::Never => write!(f, "!"),
+                Command::Unit => write!(f, "()"),
+                Command::Bool => write!(f, "bool"),
+                Command::U8 => write!(f, "u8"),
+                Command::U16 => write!(f, "u16"),
+                Command::U32 => write!(f, "u32"),
+                Command::U64 => write!(f, "u64"),
+                Command::U128 => write!(f, "u128"),
+                Command::Usize => write!(f, "usize"),
+                Command::I8 => write!(f, "i8"),
+                Command::I16 => write!(f, "i16"),
+                Command::I32 => write!(f, "i32"),
+                Command::I64 => write!(f, "i64"),
+                Command::I128 => write!(f, "i128"),
+                Command::Isize => write!(f, "isize"),
+                Command::F32 => write!(f, "f32"),
+                Command::F64 => write!(f, "f64"),
                 Command::String => write!(f, "String"),
+                Command::BoxStr => write!(f, "Box<str>"),
                 Command::FixedArray {
                     len,
                     elem_size,

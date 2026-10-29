@@ -189,3 +189,36 @@ fn containing_string_fail_missing_field() {
         MissingField
     );
 }
+
+#[derive(Debug, PartialEq)]
+struct ContainsBoxStr {
+    a: Box<str>,
+    b: Box<str>,
+}
+
+#[test]
+fn box_str() {
+    assert_parses!(
+        br#"{
+            "a": "Hello",
+            "b": "World"
+        }"#,
+        ContainsBoxStr {
+            a: Box::from("Hello"),
+            b: Box::from("World"),
+        }
+    );
+}
+
+#[test]
+fn box_str_fail_missing_field() {
+    // Under Miri, this should fail if the parser does not properly drop heap-allocated fields
+    // of partially constructed output
+    assert_errors!(
+        br#"{
+            "a": "Hello"
+        }"#,
+        ContainsBoxStr,
+        MissingField
+    );
+}

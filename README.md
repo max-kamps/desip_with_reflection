@@ -16,7 +16,7 @@ thank you!
 | `u8`, `u16`, `u32`, `u64`, `usize` | number              | Must not have a decimal point or exponent. Must be in range.              |
 | `i8`, `i16`, `i32`, `i64`, `isize` | number              | Must not have a decimal point or exponent. Must be in range.              |
 | `f32`, `f64`                       | number              |                                                                           |
-| `String`                           | string              | Must be valid UTF-8, and `\uXXXX` escape sequence must be properly paired |
+| `String`, `Box<str>`               | string              | Must be valid UTF-8, and `\uXXXX` escape sequence must be properly paired |
 | `[T; N]`                           | array               |                                                                           |
 | `struct T { .. }`                  | object              |                                                                           |
 
@@ -46,7 +46,6 @@ thank you!
     - `()`, `PhantomData<T>`, arbitrary ZSTs (Currently blocked on
       [this compiler error](https://github.com/rust-lang/rust/issues/161448))
     - tuples & tuple structs
-    - `Box<str>`
     - `Option<T>`
     - `Vec<T>`, `Box<[T]>`
     - `Box<T>`, `Rc<T>`, `Arc<T>`

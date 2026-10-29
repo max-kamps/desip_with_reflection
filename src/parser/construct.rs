@@ -61,6 +61,7 @@ fn program_add_type(
 
         // Scalars, non-primitive
         TypeKind::Struct if ty == id![String] => Command::String.as_scalar_opcode().unwrap(),
+        TypeKind::Struct if ty == id![Box<str>] => Command::BoxStr.as_scalar_opcode().unwrap(),
 
         // Compound types
         TypeKind::Array => 'block: {

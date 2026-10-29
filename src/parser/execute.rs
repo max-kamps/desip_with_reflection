@@ -130,10 +130,17 @@ impl Program {
 
             Command::String => {
                 lex.expect_string()?;
-                let ptr = dest.cast::<String>();
                 let cow = lex.read_string_utf8()?;
                 let owned = cow.into_owned();
-                unsafe { ptr.write(owned) };
+                unsafe { dest.cast::<String>().write(owned) };
+            }
+
+            Command::BoxStr => {
+                lex.expect_string()?;
+                let cow = lex.read_string_utf8()?;
+                let owned = cow.into_owned();
+                let boxed: Box<str> = owned.into_boxed_str();
+                unsafe { dest.cast::<Box<str>>().write(boxed) };
             }
 
             Command::Object { fields } => {
@@ -290,6 +297,10 @@ impl Program {
             | Command::F64 => {}
             Command::String => {
                 let ptr = field_ptr.cast::<String>();
+                unsafe { ptr.drop_in_place() };
+            }
+            Command::BoxStr => {
+                let ptr = field_ptr.cast::<Box<str>>();
                 unsafe { ptr.drop_in_place() };
             }
             Command::Object { fields } => {
