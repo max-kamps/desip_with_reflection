@@ -2,6 +2,7 @@ use crate::const_format::{Buffer, TypeIdNamePolyfill as _, const_format, full_ty
 use crate::parser::bytecode::{Command, Opcode, Program};
 use std::any::TypeId;
 use std::mem::type_info::TypeKind;
+use std::num::{Saturating, Wrapping};
 
 #[rustc_comptime]
 pub fn program_for_type_id(ty: TypeId) -> Result<Program, &'static str> {
@@ -31,6 +32,10 @@ const fn get_type_opcode(added: &[(TypeId, Opcode)], ty: TypeId) -> Option<Opcod
     None
 }
 
+trait Transparent {}
+impl<N> Transparent for Saturating<N> {}
+impl<N> Transparent for Wrapping<N> {}
+
 #[rustc_comptime]
 fn program_add_type(
     program: &mut Program<Vec<u32>>,
@@ -39,6 +44,11 @@ fn program_add_type(
     added: &mut Vec<(TypeId, Opcode)>,
 ) -> Result<Opcode, &'static str> {
     Ok(match ty.info().kind {
+        TypeKind::Struct if ty.trait_info_of::<dyn Transparent>().is_some() => {
+            let inner_ty = ty.field(0, 0).type_id();
+            program_add_type(program, inner_ty, path, added)?
+        }
+
         // Scalars, primitive
         TypeKind::Other if ty == id![!] => Command::Never.as_scalar_opcode().unwrap(),
         TypeKind::Tuple if ty == id![()] => Command::Unit.as_scalar_opcode().unwrap(),

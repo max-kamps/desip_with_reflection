@@ -15,6 +15,7 @@ thank you!
 | `bool`                             | `true` or `false`   |                                                                           |
 | `u8`, `u16`, `u32`, `u64`, `usize` | number              | Must not have a decimal point or exponent. Must be in range.              |
 | `i8`, `i16`, `i32`, `i64`, `isize` | number              | Must not have a decimal point or exponent. Must be in range.              |
+| `Wrapping<T>`, `Saturating<T>`     | number              | Same as inner type                                                        |
 | `f32`, `f64`                       | number              |                                                                           |
 | `String`, `Box<str>`               | string              | Must be valid UTF-8, and `\uXXXX` escape sequence must be properly paired |
 | `[T; N]`                           | array               |                                                                           |

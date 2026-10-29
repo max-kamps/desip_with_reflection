@@ -1,4 +1,5 @@
 use desip_with_reflection::{JsonError, JsonErrorKind::*, deserialize_slice};
+use std::num::{Saturating, Wrapping};
 
 macro_rules! assert_parses {
     ($input:expr, $ty:ident $constructor_args:tt) => {
@@ -220,5 +221,25 @@ fn box_str_fail_missing_field() {
         }"#,
         ContainsBoxStr,
         MissingField
+    );
+}
+
+#[derive(Debug, PartialEq)]
+struct WrappingSaturating {
+    a: Saturating<u16>,
+    b: Wrapping<u32>,
+}
+
+#[test]
+fn wrapping_saturating() {
+    assert_parses!(
+        br#"{
+            "a": 65535,
+            "b": 4294967295
+        }"#,
+        WrappingSaturating {
+            a: Saturating(65535),
+            b: Wrapping(4294967295),
+        }
     );
 }
