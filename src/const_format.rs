@@ -1,8 +1,17 @@
 use std::{any::TypeId, mem::type_info::TypeKind};
 
-pub macro id($ty:ty) {{
-    ::core::any::TypeId::of::<$ty>()
-}}
+pub macro id($ty:ty) {{ ::core::any::TypeId::of::<$ty>() }}
+
+// FIXME
+pub const trait TypeIdNamePolyfill {
+    fn name(&self) -> &'static str;
+}
+
+const impl TypeIdNamePolyfill for TypeId {
+    fn name(&self) -> &'static str {
+        "<TODO type name>"
+    }
+}
 
 /// Like a Vec<u8>, but with all methods const
 pub struct Buffer {
@@ -35,7 +44,6 @@ impl Buffer {
     }
 
     pub const fn extend_from_slice(&mut self, slice: &[u8]) {
-        #[allow(clippy::needless_range_loop)]
         for i in 0..slice.len() {
             self.data.push(slice[i]);
         }
@@ -80,7 +88,11 @@ pub const trait WriteConstFormatArgs {
     fn const_write_format_args(&self, buf: &mut Buffer, fmt: &[u8]);
 }
 
-const impl<T, U> WriteConstFormatArgs for (T, U) where T: const ConstFormat, U: const WriteConstFormatArgs {
+const impl<T, U> WriteConstFormatArgs for (T, U)
+where
+    T: const ConstFormat,
+    U: const WriteConstFormatArgs,
+{
     fn const_write_format_args(&self, buf: &mut Buffer, fmt: &[u8]) {
         let (head, tail) = self;
         let mut i = 0;
@@ -136,14 +148,13 @@ const impl ConstFormat for Buffer {
     }
 }
 
-const impl ConstFormat for usize {
+const impl ConstFormat for u128 {
     fn const_fmt(&self, buf: &mut Buffer) {
         let mut n = *self;
         if n == 0 {
             buf.push(b'0');
             return;
         }
-
         while n > 0 {
             let digit = (n % 10) as u8;
             buf.push(b'0' + digit);
@@ -152,13 +163,48 @@ const impl ConstFormat for usize {
     }
 }
 
-const impl<T> ConstFormat for &T where T: const ConstFormat {
+const impl ConstFormat for i128 {
+    fn const_fmt(&self, buf: &mut Buffer) {
+        let n = *self;
+        if n < 0 {
+            buf.push(b'-');
+            ((-n) as u128).const_fmt(buf);
+        } else {
+            (n as u128).const_fmt(buf);
+        }
+    }
+}
+
+macro impl_const_fmt_int($(
+    $as_ty:ty: ($($ty:ty),* $(,)?), $(,)?
+)*) {
+    $($(
+        const impl ConstFormat for $ty {
+            fn const_fmt(&self, buf: &mut Buffer) {
+                (*self as $as_ty).const_fmt(buf);
+            }
+        }
+    )*)*
+}
+
+impl_const_fmt_int!(
+    u128: (u8, u16, u32, u64, usize),
+    i128: (i8, i16, i32, i64, isize),
+);
+
+const impl<T> ConstFormat for &T
+where
+    T: const ConstFormat,
+{
     fn const_fmt(&self, buf: &mut Buffer) {
         (**self).const_fmt(buf);
     }
 }
 
-const impl<T> ConstFormat for &mut T where T: const ConstFormat {
+const impl<T> ConstFormat for &mut T
+where
+    T: const ConstFormat,
+{
     fn const_fmt(&self, buf: &mut Buffer) {
         (**self).const_fmt(buf);
     }
@@ -220,12 +266,20 @@ pub fn full_type_name(ty: TypeId) -> &'static str {
         TypeKind::Reference => {
             let elem_ty = ty.points_to().unwrap();
             let is_mut = ty.points_mutably();
-            const_format!("&{}{}", if is_mut { "mut " } else { "" }, full_type_name(elem_ty))
+            const_format!(
+                "&{}{}",
+                if is_mut { "mut " } else { "" },
+                full_type_name(elem_ty)
+            )
         }
         TypeKind::Pointer => {
             let elem_ty = ty.points_to().unwrap();
             let is_mut = ty.points_mutably();
-            const_format!("*{}{}", if is_mut { "mut " } else { "const " }, full_type_name(elem_ty))
+            const_format!(
+                "*{}{}",
+                if is_mut { "mut " } else { "const " },
+                full_type_name(elem_ty)
+            )
         }
         TypeKind::FnPtr => {
             let _sig = ty.function_ptr().unwrap();
@@ -235,7 +289,6 @@ pub fn full_type_name(ty: TypeId) -> &'static str {
         TypeKind::DynTrait(dyn_trait) => {
             let mut buf = Buffer::new();
             buf.extend_from_str("dyn ");
-            #[allow(clippy::needless_range_loop)]
             for i in 0..dyn_trait.predicates.len() {
                 if i > 0 {
                     buf.push(b'+');

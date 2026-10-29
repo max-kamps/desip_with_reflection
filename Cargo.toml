@@ -6,3 +6,6 @@ edition = "2024"
 [[test]]
 name = "tests"
 path = "src/tests.rs"
+
+[lints.clippy]
+needless_range_loop = "allow"

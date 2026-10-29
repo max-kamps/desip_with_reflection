@@ -20,6 +20,7 @@ pub enum JsonErrorKind {
     InvalidToken,
     InvalidNumber,
     UnexpectedValue,
+    UnexpectedEndOfArray,
     ExpectedValue,
     ExpectedNull,
     ExpectedBoolean,

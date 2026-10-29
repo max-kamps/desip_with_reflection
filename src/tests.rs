@@ -1,8 +1,8 @@
-use desip_with_reflection::{JsonError, JsonErrorKind::*, parse_slice};
+use desip_with_reflection::{JsonError, JsonErrorKind::*, deserialize_slice};
 
 macro_rules! assert_parses {
     ($input:expr, $ty:ident $constructor_args:tt) => {
-        let data: Result<$ty, JsonError> = parse_slice($input);
+        let data: Result<$ty, JsonError> = deserialize_slice($input);
         match data {
             Ok(data) => assert_eq!(data, $ty $constructor_args),
             Err(err) => panic!("Parsing failed: {err}"),
@@ -12,7 +12,7 @@ macro_rules! assert_parses {
 
 macro_rules! assert_errors {
     ($input:expr, $ty:ident, $error_kind:expr) => {
-        let result = desip_with_reflection::parse_slice::<$ty>($input);
+        let result = deserialize_slice::<$ty>($input);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind, $error_kind);
